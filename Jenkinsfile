@@ -46,27 +46,29 @@ pipeline {
     
     stage('Prepare') {
       steps {
-        sh """
-          echo "[ req ]" > ${REQ_CONFIG_FILE}
-          echo "prompt = no" >> ${REQ_CONFIG_FILE}
-          echo "default_bits = 2048" >> ${REQ_CONFIG_FILE}
-          echo "distinguished_name = req_distinguished_name" >> ${REQ_CONFIG_FILE}
-          [[ "${WILDCARD}" == "YES" ]] \
-              && echo "req_extensions = req_ext" >> ${REQ_CONFIG_FILE}
-          echo "[ req_distinguished_name ]" >> ${REQ_CONFIG_FILE}
-          echo "countryName = ${COUNTRY}" >> ${REQ_CONFIG_FILE}
-          echo "stateOrProvinceName = ${STATE}" >> ${REQ_CONFIG_FILE}
-          echo "localityName = ${CITY}" >> ${REQ_CONFIG_FILE}
-          echo "organizationName = ${ORGANIZATION}" >> ${REQ_CONFIG_FILE}
-          echo "commonName = ${DOMAIN}" >> ${REQ_CONFIG_FILE}
-          echo "emailAddress = ${EMAIL}" >> ${REQ_CONFIG_FILE}
-          [[ "${WILDCARD}" == "YES" ]] \
-              && echo "[ req_ext ]" >> ${REQ_CONFIG_FILE} \
-              && echo "subjectAltName = @alt_names" >> ${REQ_CONFIG_FILE} \
-              && echo "[ alt_names ]" >> ${REQ_CONFIG_FILE} \
-              && echo "DNS.1 = ${DOMAIN}" >> ${REQ_CONFIG_FILE} \
-              && echo "DNS.2 = *.${DOMAIN}" >> ${REQ_CONFIG_FILE}
-        """
+        catchError(message:'Something with config file',buildResult:'UNSTABLE',stageResult:'UNSTABLE') {
+          sh """
+            echo "[ req ]" > ${REQ_CONFIG_FILE}
+            echo "prompt = no" >> ${REQ_CONFIG_FILE}
+            echo "default_bits = 2048" >> ${REQ_CONFIG_FILE}
+            echo "distinguished_name = req_distinguished_name" >> ${REQ_CONFIG_FILE}
+            [[ "${WILDCARD}" == "YES" ]] \
+                && echo "req_extensions = req_ext" >> ${REQ_CONFIG_FILE}
+            echo "[ req_distinguished_name ]" >> ${REQ_CONFIG_FILE}
+            echo "countryName = ${COUNTRY}" >> ${REQ_CONFIG_FILE}
+            echo "stateOrProvinceName = ${STATE}" >> ${REQ_CONFIG_FILE}
+            echo "localityName = ${CITY}" >> ${REQ_CONFIG_FILE}
+            echo "organizationName = ${ORGANIZATION}" >> ${REQ_CONFIG_FILE}
+            echo "commonName = ${DOMAIN}" >> ${REQ_CONFIG_FILE}
+            echo "emailAddress = ${EMAIL}" >> ${REQ_CONFIG_FILE}
+            [[ "${WILDCARD}" == "YES" ]] \
+                && echo "[ req_ext ]" >> ${REQ_CONFIG_FILE} \
+                && echo "subjectAltName = @alt_names" >> ${REQ_CONFIG_FILE} \
+                && echo "[ alt_names ]" >> ${REQ_CONFIG_FILE} \
+                && echo "DNS.1 = ${DOMAIN}" >> ${REQ_CONFIG_FILE} \
+                && echo "DNS.2 = *.${DOMAIN}" >> ${REQ_CONFIG_FILE}
+          """
+        }
       }
     }
 
@@ -80,14 +82,16 @@ pipeline {
 
     stage('Smoke Test') {
       steps {
-        echo "[TEST] Testing request sanity"
-        sh """
-          openssl req -text -noout -verify -in ${REQ_CONFIG_FILE}
-        """
-        echo "[TEST] Testing private key"
-        sh """
-          openssl rsa -text -noout -in ${DOMAIN}.key
-        """
+        catchError(message:'Something with tests',buildResult:'UNSTABLE',stageResult:'UNSTABLE') {
+          echo "[TEST] Testing request sanity"
+          sh """
+            openssl req -text -noout -verify -in ${DOMAIN}.csr
+          """
+          echo "[TEST] Testing private key"
+          sh """
+            openssl rsa -text -noout -in ${DOMAIN}.key
+          """
+        }
       }
     }
   }
