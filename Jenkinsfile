@@ -12,7 +12,7 @@ pipeline {
   }
   
   environment {
-    REQ_CONFIG_FILE = "./request.cnf"
+    REQ_CONFIG_FILE = "./${params.DOMAIN}.cnf"
     DOMAIN = "${params.DOMAIN}"
     COUNTRY = "${params.COUNTRY}"
     STATE = "${params.STATE}"
@@ -36,7 +36,7 @@ pipeline {
   stages {
     stage('Prerequisites') {
       steps {
-        checkout scm
+        // checkout scm
         sh """
           echo $DOMAIN
           echo Installed OpenSSL: \$(openssl version)
@@ -46,15 +46,6 @@ pipeline {
     
     stage('Prepare') {
       steps {
-        sh """
-          pwd
-          ls -la
-
-          ## envsubst - part of gettext package
-          # cp -f san.cnf san.cnf.tmp
-          # envsubst < san.cnf.tmp > san.cnf
-          # rm -f san.cnf.tmp      
-        """
         sh """
           echo "[ req ]" > ${REQ_CONFIG_FILE}
           echo "prompt = no" >> ${REQ_CONFIG_FILE}
@@ -89,12 +80,20 @@ pipeline {
 
     stage('Smoke Test') {
       steps {
-        echo "Testing request sanity"
+        echo "[TEST] Testing request sanity"
+        sh """
+          openssl req -text -noout -verify -in ${REQ_CONFIG_FILE}
+        """
+        echo "[TEST] Testing private key"
+        sh """
+          openssl rsa -text -noout -in ${DOMAIN}.key
+        """
       }
     }
   }
   post {
     success {
+      // Can save to AWS SecretsManager directly
       archiveArtifacts artifacts: "${env.DOMAIN}.*", onlyIfSuccessful: true
     }
   }
