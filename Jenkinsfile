@@ -3,6 +3,7 @@
 pipeline {
   parameters {
     string(name: 'DOMAIN', defaultValue: params.DOMAIN?:'some.domain.dlt', description: 'Common Domain Name, no wildcard')
+    choice(name: 'WILDCARD', choices: ['NO', 'YES'], description: 'Use YES for wildcard certificate.')
     string(name: 'COUNTRY', defaultValue: params.COUNTRY?:'US', description: 'Country Name')
     string(name: 'STATE', defaultValue: params.STATE?:'ILLINOIS', description: 'State or Province Name')
     string(name: 'CITY', defaultValue: params.CITY?:'PARK RIDGE', description: 'City Name')
@@ -11,11 +12,14 @@ pipeline {
   }
   
   environment {
+    REQ_CONFIG_FILE = "./request.cnf"
     DOMAIN = "${params.DOMAIN}"
     COUNTRY = "${params.COUNTRY}"
     STATE = "${params.STATE}"
+    CITY = "${params.CITY}"
     ORGANIZATION = "${params.ORGANIZATION}"
     EMAIL = "${params.EMAIL}"
+    WILDCARD = "${params.WILDCARD}"
   }
   
   agent {
@@ -32,6 +36,7 @@ pipeline {
   stages {
     stage('Prerequisites') {
       steps {
+        checkout scm
         sh """
           echo $DOMAIN
           echo Installed OpenSSL: \$(openssl version)
@@ -42,28 +47,34 @@ pipeline {
     stage('Prepare') {
       steps {
         sh """
-          cat <<EOF > san.cnf
-          [ req ]
-          prompt = no
-          default_bits = 2048
-          distinguished_name = req_distinguished_name
-          req_extensions     = req_ext
-          [ req_distinguished_name ]
-          countryName = ${COUNTRY}
-          stateOrProvinceName = ${STATE}
-          localityName = ${CITY}
-          organizationName = ${ORGANIZATION}
-          commonName = ${DOMAIN}
-          emailAddress = ${EMAIL}
-          [ req_ext ]
-          subjectAltName = @alt_names
-          [ alt_names ]
-          DNS.1 = ${DOMAIN}
-          DNS.2 = *.${DOMAIN}         
-          EOF
           pwd
           ls -la
-          cat san.cnf 
+
+          ## envsubst - part of gettext package
+          # cp -f san.cnf san.cnf.tmp
+          # envsubst < san.cnf.tmp > san.cnf
+          # rm -f san.cnf.tmp      
+        """
+        sh """
+          echo "[ req ]" > ${REQ_CONFIG_FILE}
+          echo "prompt = no" >> ${REQ_CONFIG_FILE}
+          echo "default_bits = 2048" >> ${REQ_CONFIG_FILE}
+          echo "distinguished_name = req_distinguished_name" >> ${REQ_CONFIG_FILE}
+          [[ "${WILDCARD}" == "YES" ]] \
+              && echo "req_extensions = req_ext" >> ${REQ_CONFIG_FILE}
+          echo "[ req_distinguished_name ]" >> ${REQ_CONFIG_FILE}
+          echo "countryName = ${COUNTRY}" >> ${REQ_CONFIG_FILE}
+          echo "stateOrProvinceName = ${STATE}" >> ${REQ_CONFIG_FILE}
+          echo "localityName = ${CITY}" >> ${REQ_CONFIG_FILE}
+          echo "organizationName = ${ORGANIZATION}" >> ${REQ_CONFIG_FILE}
+          echo "commonName = ${DOMAIN}" >> ${REQ_CONFIG_FILE}
+          echo "emailAddress = ${EMAIL}" >> ${REQ_CONFIG_FILE}
+          [[ "${WILDCARD}" == "YES" ]] \
+              && echo "[ req_ext ]" >> ${REQ_CONFIG_FILE} \
+              && echo "subjectAltName = @alt_names" >> ${REQ_CONFIG_FILE} \
+              && echo "[ alt_names ]" >> ${REQ_CONFIG_FILE} \
+              && echo "DNS.1 = ${DOMAIN}" >> ${REQ_CONFIG_FILE} \
+              && echo "DNS.2 = *.${DOMAIN}" >> ${REQ_CONFIG_FILE}
         """
       }
     }
@@ -71,14 +82,20 @@ pipeline {
     stage('Generate') {
       steps {
         sh """
-          # openssl req -out sslcert.csr -newkey rsa:2048 -nodes -keyout private.key -config san.cnf
+          openssl req -out ${DOMAIN}.csr -newkey rsa:2048 -nodes -keyout ${DOMAIN}.key -config ${REQ_CONFIG_FILE}
         """
+      }
+    }
+
+    stage('Smoke Test') {
+      steps {
+        echo "Testing request sanity"
       }
     }
   }
   post {
     success {
-      // archiveArtifacts artifacts: 'private.key, sslcert.csr', onlyIfSuccessful: true
+      archiveArtifacts artifacts: "${env.DOMAIN}.*", onlyIfSuccessful: true
     }
   }
 }
